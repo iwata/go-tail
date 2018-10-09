@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
+	"regexp"
 )
 
 func main() {
@@ -19,7 +21,7 @@ func main() {
 		return
 	}
 
-	r := getResolver(filePath)
+	r := getReadResolver(filePath)
 	reader, closer, err := r.resolve()
 	if err != nil {
 		log.Fatal(err)
@@ -43,7 +45,11 @@ func parseArgs() (int, string, error) {
 	return n, f, nil
 }
 
-func getResolver(filePath string) readResolver {
+func getReadResolver(filePath string) readResolver {
+	r := regexp.MustCompile("^https?://")
+	if r.MatchString(filePath) {
+		return urlReadResolver{filePath}
+	}
 	return fileReadResolver{filePath}
 }
 
@@ -61,6 +67,18 @@ func (f fileReadResolver) resolve() (io.Reader, func(), error) {
 		return nil, nil, fmt.Errorf("Failed to open file: %s", err)
 	}
 	return file, func() { file.Close() }, nil
+}
+
+type urlReadResolver struct {
+	url string
+}
+
+func (u urlReadResolver) resolve() (io.Reader, func(), error) {
+	resp, err := http.Get(u.url)
+	if err != nil {
+		return nil, nil, err
+	}
+	return resp.Body, func() { resp.Body.Close() }, nil
 }
 
 type outPutter struct {
